@@ -15,8 +15,8 @@ import (
 var (
 	poolsize    = 200
 	timeout     = 240
-	count       = 2 // 任务数
-	workersize  = 10
+	count       = 1000 // 任务数
+	workersize  = 100
 	currentTest = true
 	jobinterval = 20
 )
@@ -97,9 +97,9 @@ func main() {
 			for {
 				select {
 				case job := <-ch:
-					atomic.AddInt32(&jobExectCount, 1)
+					sSount := atomic.AddInt32(&jobExectCount, 1)
 					//jobExectCount++
-					fmt.Println("job scheduled :", job, " jobExectCount :", jobExectCount)
+					fmt.Println("job scheduled :", job, " jobExectCount :", sSount)
 				}
 			}
 		})

@@ -41,7 +41,7 @@ func NewDCJobs(name string, ch chan *Job, intervalSecond int64, pool *redigo.Poo
 	log.SetOutput(os.Stdout)
 	log.SetFormatter(&logrus.JSONFormatter{})
 	log.SetReportCaller(true)
-	log.SetLevel(log.DebugLevel)
+	log.SetLevel(log.ErrorLevel)
 
 	redsync := redsync.New([]redsync.Pool{pool})
 	return &DCJobs{
@@ -176,7 +176,7 @@ func (jobs *DCJobs) DelJob(key string) error {
 	return nil
 }
 
-//这个地方逻辑太负载了， 怎么简化算法？？？
+//这个地方逻辑太丑陋了， 怎么简化算法？？？
 func (jobs *DCJobs) scheduleOne() {
 	//使用LPOPRPUSH获取一个key
 	//从key中获得context，需要加锁，锁的超时时间，为interval，锁等待的超时时间为50ms(可配置)
@@ -207,11 +207,16 @@ func (jobs *DCJobs) scheduleOne() {
 	//添加job的分布式锁，
 	jobKeyLock := jobs.ctxKey(jobKey) + ":lock"
 	mutex := jobs.sync.NewMutex(jobKeyLock,
-		redsync.SetExpiry(jobs.interval/2),
-		redsync.SetTries(1))
-	if mutex.Lock() == nil {
-		//
+		redsync.SetExpiry(jobs.interval/2), //锁超时
+		redsync.SetTries(1))                //不重试
+	if mutex.Lock() != nil { //没有获得锁，当前在调度任务,因为任务数太少了
+		//延时一个半个interval后返回
+		time.Sleep(jobs.interval / 2)
+		return
 	}
+	defer func() {
+		mutex.Unlock()
+	}()
 
 	jobJSON, err := redigo.Bytes(redis.Do("GET", jobs.ctxKey(jobKey)))
 	if err != nil {
@@ -231,7 +236,11 @@ func (jobs *DCJobs) scheduleOne() {
 	log.Debug("job:", job, "now:", now.Format("2006-01-02 15:04:05"), " job time:", job.Time.Format("2006-01-02 15:04:05"))
 	if job.Time.Before(now) { //任务调度的时间在当前时间的前面，直接调度任务
 		jobs.ch <- job
-		job.Time = nextSchedule //设置下次调度时间
+		job.Time = nextSchedule       //设置下次调度时间
+		if nextSchedule.Before(now) { //说明任务有至少一个interval没有调度到，可能是算法还有问题
+			log.Error("nextSchedule is before now !!  job:", job, "now:", now.Format("2006-01-02 15:04:05"),
+				" nextSchedule time:", nextSchedule.Format("2006-01-02 15:04:05"))
+		}
 	} else if !job.Time.Before(nextSchedule) { //调度的时间超过当前interval，直接等下一个循环来调度
 	} else { //调度时间未到，但是需要等待的时间小于interval，等待时间之后调度
 		timeDiff := job.Time.Sub(now)
