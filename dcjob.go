@@ -246,7 +246,7 @@ func (jobs *DCJobs) scheduleOne() {
 		timeDiff := job.Time.Sub(now)
 		time.Sleep(timeDiff)
 		jobs.ch <- job
-		job.Time = nextSchedule //设置下次调度时间
+		job.Time = nextSchedule //设置下次调度时间，因为发送到chan是指针，这里设置时间后，导致收到的job调度也是下次调度的时间。
 	}
 
 	jobCtx, _ := json.Marshal(job)

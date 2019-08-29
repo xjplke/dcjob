@@ -99,7 +99,7 @@ func main() {
 				case job := <-ch:
 					sSount := atomic.AddInt32(&jobExectCount, 1)
 					//jobExectCount++
-					fmt.Println("job scheduled :", job, " jobExectCount :", sSount)
+					fmt.Println("job scheduled :", job, " now:", time.Now().Format("2006-01-02 15:04:05"), " jobExectCount :", sSount)
 				}
 			}
 		})
